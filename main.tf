@@ -1,22 +1,22 @@
 locals {
   # next-tf config
-  config_dir                = trimsuffix(var.next_tf_dir, "/")
-  config_file               = jsondecode(file("${local.config_dir}/config.json"))
-  lambdas                   = lookup(local.config_file, "lambdas", {})
-  static_files_archive_name = lookup(local.config_file, "staticFilesArchive", "")
+  config_dir = trimsuffix(var.next_tf_dir, "/")
+
+  lambdas                   = lookup(var.config_file, "lambdas", {})
+  static_files_archive_name = lookup(var.config_file, "staticFilesArchive", "")
   static_files_archive      = "${local.config_dir}/${local.static_files_archive_name}"
 
   # Build the proxy config JSON
-  config_file_images  = lookup(local.config_file, "images", {})
-  config_file_version = lookup(local.config_file, "version", 0)
-  static_routes_json  = lookup(local.config_file, "staticRoutes", [])
-  routes_json         = lookup(local.config_file, "routes", [])
+  config_file_images  = lookup(var.config_file, "images", {})
+  config_file_version = lookup(var.config_file, "version", 0)
+  static_routes_json  = lookup(var.config_file, "staticRoutes", [])
+  routes_json         = lookup(var.config_file, "routes", [])
   lambda_routes_json = flatten([
     for integration_key, integration in local.lambdas : [
       lookup(integration, "route", "/")
     ]
   ])
-  prerenders_json = lookup(local.config_file, "prerenders", {})
+  prerenders_json = lookup(var.config_file, "prerenders", {})
   proxy_config_json = jsonencode({
     routes       = local.routes_json
     staticRoutes = local.static_routes_json
@@ -178,8 +178,8 @@ module "next_image" {
   # device) sizes to the optimizer and by setting the other
   # (next_image_device_sizes) to an empty array which prevents the optimizer
   # from adding the default device settings
-  next_image_domains      = lookup(local.config_file_images, "domains", [])
-  next_image_image_sizes  = lookup(local.config_file_images, "sizes", [])
+  next_image_domains      = lookup(var.config_file_images, "domains", [])
+  next_image_image_sizes  = lookup(var.config_file_images, "sizes", [])
   next_image_device_sizes = []
 
   source_bucket_id = module.statics_deploy.static_bucket_id
@@ -202,7 +202,7 @@ module "proxy_config" {
 
   cloudfront_price_class = var.cloudfront_price_class
   proxy_config_json      = local.proxy_config_json
-  proxy_config_version   = local.config_file_version
+  proxy_config_version   = var.config_file_version
   multiple_deployments   = var.multiple_deployments
 
   deployment_name = var.deployment_name
