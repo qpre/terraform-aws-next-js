@@ -1,0 +1,1 @@
+variable "config_file" {}

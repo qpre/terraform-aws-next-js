@@ -1,33 +1,12 @@
-locals {
-  # next-tf config
-  config_dir = trimsuffix(var.next_tf_dir, "/")
+module "config" {
+  source = "./modules/config"
 
-  lambdas                   = lookup(var.config_file, "lambdas", {})
-  static_files_archive_name = lookup(var.config_file, "staticFilesArchive", "")
-  static_files_archive      = "${local.config_dir}/${local.static_files_archive_name}"
-
-  # Build the proxy config JSON
-  config_file_images  = lookup(var.config_file, "images", {})
-  config_file_version = lookup(var.config_file, "version", 0)
-  static_routes_json  = lookup(var.config_file, "staticRoutes", [])
-  routes_json         = lookup(var.config_file, "routes", [])
-  lambda_routes_json = flatten([
-    for integration_key, integration in local.lambdas : [
-      lookup(integration, "route", "/")
-    ]
-  ])
-  prerenders_json = lookup(var.config_file, "prerenders", {})
-  proxy_config_json = jsonencode({
-    routes       = local.routes_json
-    staticRoutes = local.static_routes_json
-    lambdaRoutes = local.lambda_routes_json
-    prerenders   = local.prerenders_json
-  })
+  config_file = var.config_file
 }
 
 # Generates for each function a unique function name
 resource "random_id" "function_name" {
-  for_each = local.lambdas
+  for_each = module.config.lambdas
 
   prefix      = "${each.key}-"
   byte_length = 4
@@ -43,8 +22,8 @@ module "statics_deploy" {
 
   domain_name                  = var.domain_name
   expire_static_assets         = var.expire_static_assets
-  static_files_archive         = local.static_files_archive
-  static_files_archive_name    = local.static_files_archive_name
+  static_files_archive         = module.config.static_files_archive
+  static_files_archive_name    = module.config.static_files_archive_name
   lambda_logging_policy_arn    = aws_iam_policy.lambda_logging.arn
   lambda_attach_to_vpc         = var.lambda_attach_to_vpc
   lambda_environment_variables = var.lambda_environment_variables
@@ -72,7 +51,7 @@ module "statics_deploy" {
 # Lambda
 
 resource "aws_lambda_function" "this" {
-  for_each = local.lambdas
+  for_each = module.config.lambdas
 
   function_name = random_id.function_name[each.key].hex
   description   = "Managed by Terraform-next.js"
@@ -83,8 +62,8 @@ resource "aws_lambda_function" "this" {
   timeout       = var.lambda_timeout
   tags          = var.tags
 
-  filename         = "${local.config_dir}/${lookup(each.value, "filename", "")}"
-  source_code_hash = filebase64sha256("${local.config_dir}/${lookup(each.value, "filename", "")}")
+  filename         = "${module.config.config_dir}/${lookup(each.value, "filename", "")}"
+  source_code_hash = filebase64sha256("${module.config.config_dir}/${lookup(each.value, "filename", "")}")
 
   dynamic "environment" {
     for_each = length(var.lambda_environment_variables) > 0 ? [true] : []
@@ -107,7 +86,7 @@ resource "aws_lambda_function" "this" {
 # Lambda invoke permission
 
 resource "aws_lambda_permission" "current_version_triggers" {
-  for_each = local.lambdas
+  for_each = module.config.lambdas
 
   statement_id  = "AllowInvokeFromApiGateway"
   action        = "lambda:InvokeFunction"
@@ -121,21 +100,6 @@ resource "aws_lambda_permission" "current_version_triggers" {
 # Api-Gateway
 #############
 
-locals {
-  integrations_keys = flatten([
-    for integration_key, integration in local.lambdas : [
-      "ANY ${lookup(integration, "route", "")}/{proxy+}"
-    ]
-  ])
-  integration_values = flatten([
-    for integration_key, integration in local.lambdas : {
-      lambda_arn             = aws_lambda_function.this[integration_key].arn
-      payload_format_version = "2.0"
-      timeout_milliseconds   = var.lambda_timeout * 1000
-    }
-  ])
-  integrations = zipmap(local.integrations_keys, local.integration_values)
-}
 
 module "api_gateway" {
   source  = "terraform-aws-modules/apigateway-v2/aws"
@@ -147,7 +111,17 @@ module "api_gateway" {
 
   create_api_domain_name = false
 
-  integrations = local.integrations
+  integrations = zipmap(flatten([
+    for integration_key, integration in module.config.lambdas : [
+      "ANY ${lookup(integration, "route", "")}/{proxy+}"
+    ]
+    ]), flatten([
+    for integration_key, integration in module.config.lambdas : {
+      lambda_arn             = aws_lambda_function.this[integration_key].arn
+      payload_format_version = "2.0"
+      timeout_milliseconds   = var.lambda_timeout * 1000
+    }
+  ]))
 
   tags = var.tags
 }
@@ -178,8 +152,8 @@ module "next_image" {
   # device) sizes to the optimizer and by setting the other
   # (next_image_device_sizes) to an empty array which prevents the optimizer
   # from adding the default device settings
-  next_image_domains      = lookup(local.config_file_images, "domains", [])
-  next_image_image_sizes  = lookup(local.config_file_images, "sizes", [])
+  next_image_domains      = lookup(module.config.config_file_images, "domains", [])
+  next_image_image_sizes  = lookup(module.config.config_file_images, "sizes", [])
   next_image_device_sizes = []
 
   source_bucket_id = module.statics_deploy.static_bucket_id
@@ -201,9 +175,18 @@ module "proxy_config" {
   source = "./modules/cloudfront-proxy-config"
 
   cloudfront_price_class = var.cloudfront_price_class
-  proxy_config_json      = local.proxy_config_json
-  proxy_config_version   = local.config_file_version
-  multiple_deployments   = var.multiple_deployments
+  proxy_config_json = jsonencode({
+    routes       = module.config.routes_json
+    staticRoutes = module.config.static_routes_json
+    lambdaRoutes = flatten([
+      for integration_key, integration in module.config.lambdas : [
+        lookup(integration, "route", "/")
+      ]
+    ])
+    prerenders = module.config.prerenders_json
+  })
+  proxy_config_version = module.config.config_file_version
+  multiple_deployments = var.multiple_deployments
 
   deployment_name = var.deployment_name
   tags            = var.tags
