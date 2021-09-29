@@ -2,6 +2,7 @@ module "config" {
   source = "./modules/config"
 
   config_file = var.config_file
+  next_tf_dir = var.next_tf_dir
 }
 
 # Generates for each function a unique function name

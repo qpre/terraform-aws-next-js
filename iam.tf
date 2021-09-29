@@ -15,7 +15,7 @@ data "aws_iam_policy_document" "assume_role" {
 }
 
 resource "aws_iam_role" "lambda" {
-  for_each = local.lambdas
+  for_each = module.config.lambdas
 
   name        = random_id.function_name[each.key].hex
   description = "Managed by Terraform Next.js"
@@ -32,7 +32,7 @@ resource "aws_iam_role" "lambda" {
 #############################
 
 resource "aws_cloudwatch_log_group" "this" {
-  for_each = local.lambdas
+  for_each = module.config.lambdas
 
   name              = "/aws/lambda/${random_id.function_name[each.key].hex}"
   retention_in_days = 14
@@ -62,14 +62,14 @@ resource "aws_iam_policy" "lambda_logging" {
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_logs" {
-  for_each = local.lambdas
+  for_each = module.config.lambdas
 
   role       = aws_iam_role.lambda[each.key].name
   policy_arn = aws_iam_policy.lambda_logging.arn
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_vpc" {
-  for_each = var.lambda_attach_to_vpc ? local.lambdas : {}
+  for_each = var.lambda_attach_to_vpc ? module.config.lambdas : {}
 
   role       = aws_iam_role.lambda[each.key].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
@@ -88,7 +88,7 @@ resource "aws_iam_policy" "additional_json" {
 }
 
 resource "aws_iam_role_policy_attachment" "additional_json" {
-  for_each = var.lambda_policy_json != null ? local.lambdas : {}
+  for_each = var.lambda_policy_json != null ? module.config.lambdas : {}
 
   role       = aws_iam_role.lambda[each.key].name
   policy_arn = aws_iam_policy.additional_json[0].arn
