@@ -7,6 +7,10 @@ variable "next_tf_dir" {
   default     = "./.next-tf"
 }
 
+variable "config_file" {
+
+}
+
 variable "create_image_optimization" {
   description = "Controls whether resources for image optimization support should be created or not."
   type        = bool
