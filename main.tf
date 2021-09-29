@@ -178,8 +178,8 @@ module "next_image" {
   # device) sizes to the optimizer and by setting the other
   # (next_image_device_sizes) to an empty array which prevents the optimizer
   # from adding the default device settings
-  next_image_domains      = lookup(var.config_file_images, "domains", [])
-  next_image_image_sizes  = lookup(var.config_file_images, "sizes", [])
+  next_image_domains      = lookup(local.config_file_images, "domains", [])
+  next_image_image_sizes  = lookup(local.config_file_images, "sizes", [])
   next_image_device_sizes = []
 
   source_bucket_id = module.statics_deploy.static_bucket_id
@@ -202,7 +202,7 @@ module "proxy_config" {
 
   cloudfront_price_class = var.cloudfront_price_class
   proxy_config_json      = local.proxy_config_json
-  proxy_config_version   = var.config_file_version
+  proxy_config_version   = local.config_file_version
   multiple_deployments   = var.multiple_deployments
 
   deployment_name = var.deployment_name
